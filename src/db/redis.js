@@ -23,7 +23,7 @@ function get(key) {
         reject(err);
         return;
       }
-      if (val === null) {
+      if (val == null) {
         resolve(null);
         return;
       }
@@ -34,6 +34,7 @@ function get(key) {
       }
     });
   });
+  return promise;
 }
 
 module.exports = { set, get };

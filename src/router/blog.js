@@ -15,8 +15,17 @@ const loginCheck = req => {
 
 const handleBLogRouter = (req, res) => {
   if (req.method === "GET" && req.path === "/api/blog/list") {
-    const author = req.query.author || "";
+    let author = req.query.author || "";
     const keyword = req.query.keyword || "";
+
+    if (req.query.isadmin) {
+      const loginCheckResult = loginCheck(req);
+      if (loginCheckResult) {
+        return loginCheckResult;
+      }
+      author = req.session.username;
+    }
+
     //返回promise
     const result = getList(author, keyword);
     return result.then(listData => {
@@ -33,7 +42,7 @@ const handleBLogRouter = (req, res) => {
   if (req.method === "POST" && req.path === "/api/blog/new") {
     const loginCheckResult = loginCheck(req);
     if (loginCheckResult) {
-      return loginCheck;
+      return loginCheckResult;
     }
     req.body.author = req.session.username;
     const result = newBlog(req.body);
@@ -44,7 +53,7 @@ const handleBLogRouter = (req, res) => {
   if (req.method === "POST" && req.path === "/api/blog/update") {
     const loginCheckResult = loginCheck(req);
     if (loginCheckResult) {
-      return loginCheck;
+      return loginCheckResult;
     }
     const result = updateBlog(req.query.id, req.body);
     return result.then(val => {
@@ -55,10 +64,10 @@ const handleBLogRouter = (req, res) => {
       }
     });
   }
-  if (req.method === "POST" && req.path === "/api/blog/delete") {
+  if (req.method === "POST" && req.path === "/api/blog/del") {
     const loginCheckResult = loginCheck(req);
     if (loginCheckResult) {
-      return loginCheck;
+      return loginCheckResult;
     }
     const author = req.session.username;
     const result = delBlog(req.query.id, author);

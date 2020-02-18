@@ -2,16 +2,16 @@ const handleBlogRouter = require("./src/router/blog");
 const handleUserRouter = require("./src/router/user");
 const Url = require("url");
 const { access } = require("./src/utils/log");
+const { get, set } = require("./src/db/redis");
 
 const getCookieExpires = () => {
   const d = new Date();
   d.setTime(d.getTime() + 24 * 60 * 60 * 1000);
-  console.log(d.toGMTString());
   return d.toGMTString();
 };
 
 //session
-const SESSION_DATA = {};
+//const SESSION_DATA = {};
 
 const getPostData = req => {
   const promise = new Promise((resolve, reject) => {
@@ -70,57 +70,85 @@ const serverHandler = (req, res) => {
     req.cookie[key] = value;
   });
 
-  //处理session
-  let userId = req.cookie.userid;
+  // //处理session
+  // let userId = req.cookie.userid;
+  // let needSetCookie = false;
+  // if (userId) {
+  //   if (!SESSION_DATA[userId]) {
+  //     SESSION_DATA[userId] = {};
+  //   }
+  // } else {
+  //   needSetCookie = true;
+  //   userId = `${Date.now()}_${Math.random()}`;
+  //   SESSION_DATA[userId] = {};
+  // }
+  // req.session = SESSION_DATA[userId];
+
+  // 解析 session （使用 redis）
   let needSetCookie = false;
-  if (userId) {
-    if (!SESSION_DATA[userId]) {
-      SESSION_DATA[userId] = {};
-    }
-  } else {
+  let userId = req.cookie.userid;
+  if (!userId) {
     needSetCookie = true;
     userId = `${Date.now()}_${Math.random()}`;
-    SESSION_DATA[userId] = {};
+    // 初始化 redis 中的 session 值
+    set(userId, {});
   }
-  req.session = SESSION_DATA[userId];
-  //处理post
-  getPostData(req).then(postData => {
-    //有作用域！！！
-    //异步的
-    req.body = postData;
-    const blogResult = handleBlogRouter(req, res);
-    if (blogResult) {
-      blogResult.then(blogData => {
-        if (needSetCookie) {
-          res.setHeader(
-            "Set-Cookie",
-            `userid=${userId}; path=/; httpOnly; expires = ${getCookieExpires()} `
-          );
-        }
-        res.end(JSON.stringify(blogData));
-      });
-      return;
-    }
+  // 获取 session
+  req.sessionId = userId;
+  get(req.sessionId)
+    .then(sessionData => {
+      if (sessionData === null) {
+        // 初始化 redis 中的 session 值
+        set(req.sessionId, {});
+        // 设置 session
+        req.session = {};
+      } else {
+        // 设置 session
+        req.session = sessionData;
+      }
+      // console.log('req.session ', req.session)
 
-    const userResult = handleUserRouter(req, res);
-    if (userResult) {
-      userResult.then(userData => {
-        //若生成userid 写入cookie
-        if (needSetCookie) {
-          res.setHeader(
-            "Set-Cookie",
-            `userid=${userId}; path=/; httpOnly; expires = ${getCookieExpires()} `
-          );
-        }
-        res.end(JSON.stringify(userData));
-      });
-      return;
-    }
+      // 处理 post data
+      return getPostData(req);
+    })
+    .then(postData => {
+      //处理postData
+      //有作用域！！！
+      //异步的
+      req.body = postData;
+      const blogResult = handleBlogRouter(req, res);
+      if (blogResult) {
+        blogResult.then(blogData => {
+          if (needSetCookie) {
+            res.setHeader(
+              "Set-Cookie",
+              `userid=${userId}; path=/; httpOnly; expires = ${getCookieExpires()} `
+            );
+          }
+          res.end(JSON.stringify(blogData));
+        });
+        return;
+      }
 
-    res.writeHead(404, { "Content-type": "text/plain" });
-    res.write("404 NOT FOUND\n");
-    res.end();
-  });
+      const userResult = handleUserRouter(req, res);
+      if (userResult) {
+        userResult.then(userData => {
+          //若生成userid 写入cookie
+          if (needSetCookie) {
+            res.setHeader(
+              "Set-Cookie",
+              `userid=${userId}; path=/; httpOnly; expires = ${getCookieExpires()} `
+            );
+          }
+          res.end(JSON.stringify(userData));
+        });
+        return;
+      }
+
+      res.writeHead(404, { "Content-type": "text/plain" });
+      res.write("404 NOT FOUND\n");
+      res.end();
+    });
 };
 
 module.exports = serverHandler;
